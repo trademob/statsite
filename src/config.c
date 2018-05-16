@@ -29,6 +29,7 @@ static double default_quantiles[] = {0.5, 0.95, 0.99};
 static const statsite_config DEFAULT_CONFIG = {
     8125,               // TCP defaults to 8125
     8125,               // UDP on 8125
+    0,                  // RCVBUF for UDP sockets unchanged from OS default
     "::",               // Listen on all addresses
     false,              // Do not parse stdin by default
     "DEBUG",            // DEBUG level
@@ -39,6 +40,7 @@ static const statsite_config DEFAULT_CONFIG = {
     "cat",              // Pipe to cat
     10,                 // Flush every 10 seconds
     0,                  // Do not daemonize
+    0,                  // Align flush interval to clock
     "/var/run/statsite.pid", // Default pidfile path
     0,                  // Do not use binary output by default
     NULL,               // Do not track number of messages received
@@ -51,7 +53,7 @@ static const statsite_config DEFAULT_CONFIG = {
     {"", "kv.", "gauges.", "counts.", "timers.", "sets.", ""},
     {},
     false,              // Extended counters off by default
-    {true, true, true, true, true, true, true, true, false, false},   // All extended counter metrics except sample_rate and median
+    true,               // Legacy behaviour of extended counters
     {true, true, true, true, true, true, true, true, true, true},   // All timer metrics on by default
     false,              // Do not prefix binary stream by default
                         // Number of quantiles
@@ -136,7 +138,7 @@ static int value_to_list_of_doubles(const char *val, double **result, int *count
 
 
 /**
-* Parsing the extended counters config
+* Parsing the extended metrics config
 * @arg config The global config
 * @arg value the extended counters to be used
 *
@@ -144,37 +146,41 @@ static int value_to_list_of_doubles(const char *val, double **result, int *count
 included_metrics_config csv_to_included_metrics_config(const char *value)
 {
 
-    included_metrics_config included_metrics_cfg = (included_metrics_config){false, false, false, false, false, false, false, false};
+    included_metrics_config included_metrics_cfg = (included_metrics_config){false, false, false, false, false, false, false, false, false, false};
 
-    char* token;
+    const char* token;
+    size_t token_len;
+    const char *skip = ", ";
 
-    char s[256];
-    strcpy(s, value);
-    token = strtok(s,",");
-    while( token != NULL )
+    token = value;
+    token += strspn(token, skip);
+    token_len = strcspn(token, skip);
+    while( token_len > 2 )
     {
-        if (strcasecmp(token, "COUNT") == 0){
+        if (strncasecmp(token, "COUNT", token_len) == 0){
             included_metrics_cfg.count = true;
-        } else if(strcasecmp(token, "MEAN") == 0){
+        } else if(strncasecmp(token, "MEAN", token_len) == 0){
             included_metrics_cfg.mean = true;
-        } else if (strcasecmp(token, "STDEV") == 0){
+        } else if (strncasecmp(token, "STDEV", token_len) == 0){
             included_metrics_cfg.stdev = true;
-        } else if (strcasecmp(token, "SUM") == 0){
+        } else if (strncasecmp(token, "SUM", token_len) == 0){
             included_metrics_cfg.sum = true;
-        } else if (strcasecmp(token, "SUM_SQ") == 0){
+        } else if (strncasecmp(token, "SUM_SQ", token_len) == 0){
             included_metrics_cfg.sum_sq = true;
-        } else if (strcasecmp(token, "LOWER") == 0){
+        } else if (strncasecmp(token, "LOWER", token_len) == 0){
             included_metrics_cfg.lower = true;
-        } else if (strcasecmp(token, "UPPER") == 0){
+        } else if (strncasecmp(token, "UPPER", token_len) == 0){
             included_metrics_cfg.upper = true;
-        } else if (strcasecmp(token, "RATE") == 0){
+        } else if (strncasecmp(token, "RATE", token_len) == 0){
             included_metrics_cfg.rate = true;
-        } else if (strcasecmp(token, "MEDIAN") == 0){
+        } else if (strncasecmp(token, "MEDIAN", token_len) == 0){
             included_metrics_cfg.median = true;
-        } else if (strcasecmp(token, "SAMPLE_RATE") == 0){
+        } else if (strncasecmp(token, "SAMPLE_RATE", token_len) == 0){
             included_metrics_cfg.sample_rate = true;
         }
-        token = strtok(NULL, ",");
+        token += token_len;
+        token += strspn(token, skip);
+        token_len = strcspn(token, skip);
     }
 
     return included_metrics_cfg;
@@ -311,18 +317,24 @@ static int config_callback(void* user, const char* section, const char* name, co
         return value_to_int(value, &config->tcp_port);
     } else if (NAME_MATCH("udp_port")) {
         return value_to_int(value, &config->udp_port);
+    } else if (NAME_MATCH("udp_rcvbuf")) {
+        return value_to_int(value, &config->udp_rcvbuf);
     } else if (NAME_MATCH("flush_interval")) {
          return value_to_int(value, &config->flush_interval);
     } else if (NAME_MATCH("parse_stdin")) {
         return value_to_bool(value, &config->parse_stdin);
     } else if (NAME_MATCH("daemonize")) {
         return value_to_bool(value, &config->daemonize);
+    } else if (NAME_MATCH("aligned_flush")) {
+        return value_to_bool(value, &config->aligned_flush);
     } else if (NAME_MATCH("binary_stream")) {
         return value_to_bool(value, &config->binary_stream);
     } else if (NAME_MATCH("use_type_prefix")) {
         return value_to_bool(value, &config->use_type_prefix);
     } else if (NAME_MATCH("extended_counters")) {
         return value_to_bool(value, &config->extended_counters);
+    } else if (NAME_MATCH("legacy_extended_counters")) {
+        return value_to_bool(value, &config->legacy_extended_counters);
     } else if (NAME_MATCH("prefix_binary_stream")) {
         return value_to_bool(value, &config->prefix_binary_stream);
 
@@ -359,8 +371,6 @@ static int config_callback(void* user, const char* section, const char* name, co
         config->prefixes[TIMER] = strdup(value);
     } else if (NAME_MATCH("sets_prefix")) {
         config->prefixes[SET] = strdup(value);
-    } else if (NAME_MATCH("extended_counters_include")) {
-        config->ext_counters_config = csv_to_included_metrics_config(value);
     } else if (NAME_MATCH("timers_include")) {
         config->timers_config = csv_to_included_metrics_config(value);
     } else if (NAME_MATCH("kv_prefix")) {

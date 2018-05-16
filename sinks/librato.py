@@ -164,6 +164,10 @@ class LibratoStore(object):
         return self.sanitize_re.sub("_", name)
 
     def add_measure(self, key, value, time):
+        # metric and source names must be 255 or fewer characters
+        if len(key) > 255:
+            key = key[:255]
+
         ts = int(time)
         if self.floor_time_secs != None:
             ts = (ts / self.floor_time_secs) * self.floor_time_secs
@@ -296,7 +300,7 @@ class LibratoStore(object):
         try:
             uname = os.uname()
             system = "; ".join([uname[0], uname[4]])
-        except:
+        except Exception:
             system = os.name()
 
         pver = sys.version_info

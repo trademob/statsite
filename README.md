@@ -1,4 +1,4 @@
-Statsite [![Build Status](https://travis-ci.org/armon/statsite.png)](https://travis-ci.org/armon/statsite)
+Statsite [![Build Status](https://travis-ci.org/statsite/statsite.png)](https://travis-ci.org/statsite/statsite)
 ========
 
 Statsite is a metrics aggregation server. Statsite is based heavily
@@ -29,6 +29,7 @@ Features
   - Librato
   - CloudWatch
   - OpenTSDB
+  - HTTP
 * Binary protocol
 * TCP, UDP, and STDIN
 * Fast
@@ -82,20 +83,24 @@ Estimation Algorithm".
 Install
 -------
 
+The following quickstart will probably work. If not, see INSTALL.md for detailed information.
+
 Download and build from source. This requires `autoconf`, `automake` and `libtool` to be available,
 available usually through a system package manager. Steps:
 
-    $ git clone https://github.com/armon/statsite.git
+    $ git clone https://github.com/statsite/statsite.git
     $ cd statsite
-    $ ./bootstrap.sh
+    $ ./autogen.sh
     $ ./configure
     $ make
-    $ ./src/statsite
+    $ ./statsite
+
+If you get any errors, you may need to check if all dependencies are installed, see INSTALL.md.
 
 Building the test code may generate errors if libcheck is not available.
 To build the test code successfully, do the following::
 
-    $ cd deps/check-0.9.8/
+    $ cd deps/check-0.10.0/
     $ ./configure
     $ make
     # make install
@@ -109,7 +114,7 @@ Usage
 -----
 
 Statsite is configured using a simple INI file.
-Here is an example configuration file::
+Here is an example configuration file:
 
     [statsite]
     port = 8125
@@ -119,7 +124,7 @@ Here is an example configuration file::
     flush_interval = 10
     timer_eps = 0.01
     set_eps = 0.02
-    stream_cmd = python sinks/graphite.py localhost 2003
+    stream_cmd = python sinks/graphite.py localhost 2003 statsite
 
     [histogram_api]
     prefix=api
@@ -151,6 +156,9 @@ options must exist in the `statsite` section of the INI file:
 
 * udp\_port : Integer, sets the UDP port. Default 8125. 0 to disable.
 
+* udp_rcvbuf : Integer, sets the SO_RCVBUF socket buffer in bytes on the UDP port.
+  Defaults to 0 which does not change the OS default setting.
+
 * bind\_address : The address to bind on. Defaults to 0.0.0.0
 
 * parse\_stdin: Enables parsing stdin as an input stream. Defaults to 0.
@@ -176,6 +184,11 @@ options must exist in the `statsite` section of the INI file:
   `flush_interval` seconds to handle the metrics. It can be any executable.
   It should read inputs over stdin and exit with status code 0 on success.
 
+* aligned\_flush : If set, flushes will be aligned on `flush_interval` boundaries, eg.
+  for a 15 second flush interval the flushes would be aligned to (0,15,30,45) boundaries 
+  of every minute. This means the first flush period might be shorter than the flush
+  interval depending on the start time of statsite.
+
 * input\_counter : If set, statsite will count how many commands it received
   in the flush interval, and the count will be emitted under this name. For
   example if set to "numStats", then statsite will emit "counter.numStats" with
@@ -199,15 +212,12 @@ options must exist in the `statsite` section of the INI file:
   each message type. Defaults to respectively: "kv.", "gauges.", "counts.",
   "sets.", "timers.". Values will be ignored if use_type_prefix set to 0.
 
-* extended\_counters : If enabled, the counter output is extended to include
-  all the computed summary values. Otherwise, the counter is emitted as just
-  the sum value. Summary values include `count`, `mean`, `stdev`, `sum`, `sum_sq`,
-  `lower`, `upper`, and `rate`.
+* extended\_counters : If enabled, the counter output will be extended to include the rate.
   Defaults to false.
 
-* extended\_counters\_include : Allows you to configure which extended counters to include
-  through a comma separated list of values, extended\_counters must be set to true. Supported values include `count`, `mean`, `stdev`, `sum`, `sum_sq`,
-  `lower`, `upper`, and `rate`. If this option is not specified but extended_counters is set to true, then all values will be included by default.
+* legacy\_extended\_counters : If enabled, the meaning of the "count" generated metrics on the
+  counters would be the number of metrics received. If false, it would be the sum of the values.
+  This is done for backwards compatibility. Defaults to true.
 
 * timers\_include : Allows you to configure which timer metrics to include
   through a comma separated list of values. Supported values include `count`, `mean`, `stdev`, `sum`, `sum_sq`,
@@ -264,6 +274,11 @@ aggregated and this is sent to the store.
 
 Gauges also support "delta" updates, which are supported by prefixing the
 value with either a `+` or a `-`. This implies you can't explicitly set a gauge to a negative number without first setting it to zero.
+
+Multiple metrics may be batched together in one UDP packet a separated by a
+newline (`\n`) character.  Care must be taken to keep UDP data size smaller
+than the network MTU minus 28 bytes for IP/UDP headers.  Statsite supports
+a maximum UDP data length of 1500 bytes.
 
 Examples:
 
@@ -429,4 +444,3 @@ but not including the next bin.
 To enable the binary sink protocol, add a configuration variable `binary_stream`
 to the configuration file with the value `yes`. An example sink is provided in
 `sinks/binary_sink.py`.
-

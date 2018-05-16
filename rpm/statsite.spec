@@ -1,7 +1,7 @@
 %global __os_install_post %(echo '%{__os_install_post}' | sed -e 's!/usr/lib[^[:space:]]*/brp-python-bytecompile[[:space:]].*$!!g')
 
 Name:		statsite
-Version:	0.7.1
+Version:	0.8.1
 Release:	1%{?dist}
 Summary:	A C implementation of statsd.
 Group:		Applications
@@ -48,7 +48,7 @@ install -m 644 rpm/statsite.tmpfiles.conf $RPM_BUILD_ROOT/etc/tmpfiles.d/statsit
 install -m 755 rpm/statsite.initscript $RPM_BUILD_ROOT/etc/init.d/statsite
 %endif
 
-install -m 755 src/statsite $RPM_BUILD_ROOT/usr/sbin
+install -m 755 statsite $RPM_BUILD_ROOT/usr/sbin
 install -m 644 rpm/statsite.conf.example $RPM_BUILD_ROOT/etc/%{name}/statsite.conf
 cp -a sinks $RPM_BUILD_ROOT/usr/libexec/%{name}
 
@@ -122,6 +122,7 @@ exit 0
 %attr(755, root, root) /usr/libexec/statsite/sinks/graphite.py
 %attr(755, root, root) /usr/libexec/statsite/sinks/cloudwatch.sh
 %attr(755, root, root) /usr/libexec/statsite/sinks/opentsdb.js
+%attr(755, root, root) /usr/libexec/statsite/sinks/http.py
 
 %changelog
 * Tue May 12 2015 Yann Ramin <yann@twitter.com> - 0.7.1-1

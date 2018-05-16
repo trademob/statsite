@@ -9,14 +9,12 @@ import logging
 import pickle
 import struct
 
-
 # Initialize the logger
 logging.basicConfig()
 
 SPACES = re.compile(r"\s+")
 SLASHES = re.compile(r"\/+")
-NON_ALNUM = re.compile(r"[^a-zA-Z_\-0-9\.\:]")
-
+NON_ALNUM = re.compile(r"[^a-zA-Z_\-0-9\.]")
 
 def read_arguments(args=None):
         p = argparse.ArgumentParser(description=__doc__)
@@ -56,8 +54,7 @@ class GraphiteStore(object):
             raise ValueError("Must have at least 1 attempt!")
         if self.protocol not in ["pickle", "lines"]:
             raise ValueError("Supported protocols are pickle, lines")
-
-        if self.normalize is True:
+        if self.normalize is not None and self.normalize not in ("False", "false", "No", "no"):
             self.normalize_func = self.normalize_key
         else:
             self.normalize_func = lambda k: "%s%s" % (self.prefix, k)
@@ -91,6 +88,11 @@ class GraphiteStore(object):
             k, v, ts = metric.split("|")
             k = self.normalize_func(k)
             self.metrics.append(((k), v, ts))
+
+    def send_metrics(self):
+        self.logger.info("Outputting %d metrics", len(self.metrics))
+        self.flush()
+        self.metrics = []
 
     def flush_lines(self):
         """
@@ -175,22 +177,18 @@ class GraphiteStore(object):
 def main():
 
     args = read_arguments()
-
     # Intialize from our arguments
     graphite = GraphiteStore(**args.__dict__)
 
+    METRICS_PER_FLUSH = 2000
+
     # Get all the inputs
-    while True:
-        try:
-            graphite.append(raw_input().strip())
-        except EOFError:
-            break
+    for line in sys.stdin:
+        if len(graphite.metrics) >= METRICS_PER_FLUSH:
+            graphite.send_metrics()
+        graphite.append(line.strip())
 
-    # Flush
-    graphite.logger.info("Outputting %d metrics", len(graphite.metrics))
-    graphite.flush()
-    graphite.close()
-
+    graphite.send_metrics()
 
 if __name__ == "__main__":
     main()
