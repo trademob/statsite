@@ -122,7 +122,7 @@ static int stream_formatter(FILE *pipe, void *data, metric_type type, char *name
                 }
                 STREAM("%s%s.rate|%f|%lld\n", prefix, name, counter_sum(value) / GLOBAL_CONFIG->flush_interval);
             } else {
-                STREAM("%s%s|%f|%lld\n", prefix, name, counter_sum(value));
+                STREAM("%s%s.count|%f|%lld\n", prefix, name, counter_sum(value));
             }
             break;
 
