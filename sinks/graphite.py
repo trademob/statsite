@@ -14,7 +14,7 @@ logging.basicConfig()
 
 SPACES = re.compile(r"\s+")
 SLASHES = re.compile(r"\/+")
-NON_ALNUM = re.compile(r"[^a-zA-Z_\-0-9\.]")
+NON_ALNUM = re.compile(r"[^a-zA-Z_\-0-9\.\:]")
 
 def read_arguments(args=None):
         p = argparse.ArgumentParser(description=__doc__)
