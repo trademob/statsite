@@ -25,8 +25,6 @@ COPY --from=builder /usr/local/bin/statsite /usr/local/bin/statsite
 COPY --from=builder /usr/local/share/statsite /usr/local/share/statsite
 
 # You'll need to mount your configuration in here.
-VOLUME /etc/statsite
-ENV STATSITE_CONFIG_PATH=/etc/statsite/statsite.conf
+COPY statsite_start.sh /usr/local/bin/statsite_start.sh
 
-ENTRYPOINT /usr/local/bin/statsite
-CMD -f ${STATSITE_CONFIG_PATH}
+ENTRYPOINT /usr/local/bin/statsite_start.sh
